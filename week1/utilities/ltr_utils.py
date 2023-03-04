@@ -65,8 +65,8 @@ def create_feature_log_query(query, doc_ids, click_prior_query, featureset_name,
     # we will use it later.
 
     feature_log_query = {
+        "size": size,
         "query": {
-            "size": size,
             "bool": {
                 "filter": [
                     {
