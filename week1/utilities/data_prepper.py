@@ -235,24 +235,44 @@ class DataPrepper:
                                                 self.ltr_store_name,
                                                 size=len(query_doc_ids), terms_field=terms_field)
         ##### Step Extract LTR Logged Features:
-        # IMPLEMENT_START --
-        print("IMPLEMENT ME: __log_ltr_query_features: Extract log features out of the LTR:EXT response and place in a data frame")
-        # Loop over the hits structure returned by running `log_query` and then extract out the features from the response per query_id and doc id.  Also capture and return all query/doc pairs that didn't return features
-        # Your structure should look like the data frame below
+
+        # Your job is to take the log_query query object you created by the create_feature_log_query method you just implemented, execute it in OpenSearch 
+        # (e.g. response = self.opensearch.search(body=log_query, index=self.index_name)) and then process the hits that come back. From those hits, you’ll need to
+        # extract the log_entry name/value pairs and put them in a structure that mirrors the “dummy” Data Frame that you are currently replacing. 
+        # Do not hardcode any features beyond doc_id, sku and query_id, as this query will return values for whatever features we have in our featureset. 
+        # If a feature isn’t present for a particular document, you should set that feature value to zero.  See ltr_featureset.json in week1/conf for an example of the 
+        # default features we are using.
+
+
+        # Loop over the hits structure returned by running `log_query` and then extract out the features from the response per query_id and doc id.  
+        # Also capture and return all query/doc pairs that didn't return features
+            
+        # TODO: Features come from ltr_featureset.json, it would be nice to read them from there.
+        feature_names = ['name_match']
+
         feature_results = {}
         feature_results["doc_id"] = []  # capture the doc id so we can join later
         feature_results["query_id"] = []  # ^^^
         feature_results["sku"] = []
-        feature_results["name_match"] = []
-        rng = np.random.default_rng(12345)
-        for doc_id in query_doc_ids:
-            feature_results["doc_id"].append(doc_id)  # capture the doc id so we can join later
-            feature_results["query_id"].append(query_id)
-            feature_results["sku"].append(doc_id)  
-            feature_results["name_match"].append(rng.random())
+        for feature_name in feature_names:
+            feature_results[feature_name] = []
+
+        response = self.opensearch.search(body=log_query, index=self.index_name)
+        if response and response['hits'] is not None and len(response['hits']['hits']) > 0:
+            hits = response['hits']['hits']
+
+            for i in range(len(hits)):
+                for doc_id in query_doc_ids:
+                    feature_results["doc_id"].append(hits[i]['_id'])  # capture the doc id so we can join later
+                    feature_results["query_id"].append(query_id)
+                    feature_results["sku"].append(hits[i]['_source']['sku'][0])  
+
+                    features = hits[i]['fields']['_ltrlog'][0]['log_entry']
+                    for feature in features:
+                        feature_results[feature['name']] = feature.get('value', 0)
+
         frame = pd.DataFrame(feature_results)
         return frame.astype({'doc_id': 'int64', 'query_id': 'int64', 'sku': 'int64'})
-        # IMPLEMENT_END
 
     # Can try out normalizing data, but for XGb, you really don't have to since it is just finding splits
     def normalize_data(self, ranks_features_df, feature_set, normalize_type_map):
