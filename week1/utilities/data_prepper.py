@@ -246,16 +246,11 @@ class DataPrepper:
 
         # Loop over the hits structure returned by running `log_query` and then extract out the features from the response per query_id and doc id.  
         # Also capture and return all query/doc pairs that didn't return features
-            
-        # TODO: Features come from ltr_featureset.json, it would be nice to read them from there.
-        feature_names = ['name_match']
 
         feature_results = {}
         feature_results["doc_id"] = []  # capture the doc id so we can join later
         feature_results["query_id"] = []  # ^^^
         feature_results["sku"] = []
-        for feature_name in feature_names:
-            feature_results[feature_name] = []
 
         response = self.opensearch.search(body=log_query, index=self.index_name)
         if response and response['hits'] is not None and len(response['hits']['hits']) > 0:
@@ -269,7 +264,9 @@ class DataPrepper:
 
                     features = hits[i]['fields']['_ltrlog'][0]['log_entry']
                     for feature in features:
-                        feature_results[feature['name']] = feature.get('value', 0)
+                        if feature['name'] not in feature_results:
+                            feature_results[feature['name']] = []
+                        feature_results[feature['name']].append(feature.get('value', 0))
 
         frame = pd.DataFrame(feature_results)
         return frame.astype({'doc_id': 'int64', 'query_id': 'int64', 'sku': 'int64'})
