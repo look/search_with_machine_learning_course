@@ -23,7 +23,7 @@ logging.basicConfig(format='%(levelname)s:%(message)s')
 from sentence_transformers import SentenceTransformer
 
 logger.info("Creating Model")
-model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
+model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 print(model)
 
 # NOTE: this is not a complete list of fields.  If you wish to add more, put in the appropriate XPath expression.
@@ -118,12 +118,6 @@ def index_file(file, index_name, reduced=False):
     root = tree.getroot()
     children = root.findall("./product")
     docs = []
-    names = []
-    # IMPLEMENT ME: maintain the names array parallel to docs,
-    # and then embed them in bulk and add them to each doc,
-    # in the '_source' part of each docs entry, before calling bulk
-    # to index them 200 at a time. Make sure to clear the names array
-    # when you clear the docs array!
     for child in children:
         doc = {}
         for idx in range(0, len(mappings), 2):
@@ -138,27 +132,28 @@ def index_file(file, index_name, reduced=False):
         if reduced and ('categoryPath' not in doc or 'Best Buy' not in doc['categoryPath'] or 'Movies & Music' in doc['categoryPath']):
             continue
 
-        names.append(doc['name'])
-
-        docs.append({'_index': index_name, '_id':doc['sku'][0], '_source' : doc})
-        #docs.append({'_index': index_name, '_source': doc})
+        docs.append({'_index': index_name, '_id': doc['sku'][0], '_source': doc})
         docs_indexed += 1
         if docs_indexed % 200 == 0:
-            logger.info("encoding names")
-            embeddings = model.encode(names)
-
-            for i, embedding in enumerate(embeddings):
-                docs[i]['embedding'] = embedding
-
-            logger.info("Indexing")
-            bulk(client, docs, request_timeout=60)
-            logger.info(f'{docs_indexed} documents indexed')
+            index_batch(client, docs)
             docs = []
-            names = []
     if len(docs) > 0:
-        bulk(client, docs, request_timeout=60)
-        logger.info(f'{docs_indexed} documents indexed')
+        index_batch(client, docs)    
+    logger.info(f'{docs_indexed} documents indexed')
     return docs_indexed
+
+def index_batch(client, docs):
+    names = [doc['_source']['name'][0] for doc in docs]
+    logger.info("encoding %d names", len(names))
+    embeddings = model.encode(names)
+
+    logger.info("adding %d embeddings to %d docs", len(embeddings), len(docs))
+    for i, embedding in enumerate(embeddings):
+        docs[i]['_source']['embedding'] = embedding
+
+    logger.info("Indexing")
+    bulk(client, docs, request_timeout=60)
+    logger.info(f'{len(docs)} documents indexed')
 
 @click.command()
 @click.option('--source_dir', '-s', default='/workspace/datasets/product_data/products', help='XML files source directory')
